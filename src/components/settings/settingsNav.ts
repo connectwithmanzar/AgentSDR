@@ -1,6 +1,8 @@
 import {
   RiBookOpenLine,
   RiBuilding2Line,
+  RiDatabase2Line,
+  RiHistoryLine,
   RiCpuLine,
   RiEqualizerLine,
   RiGroupLine,
@@ -41,6 +43,7 @@ export const SETTINGS_NAV: { label: string; items: SettingsNavItem[] }[] = [
       { href: "/settings/members", label: "Members", icon: RiGroupLine },
       { href: "/settings/teams", label: "Teams", icon: RiTeamLine },
       { href: "/settings/api-keys", label: "API keys", icon: RiKey2Line },
+      { href: "/settings/desk", label: "Candidate database", icon: RiBookOpenLine },
       { href: "/settings/ai-assistants", label: "AI assistants", icon: RiRobot2Line },
     ],
   },
@@ -96,6 +99,8 @@ export const SETTINGS_NAV: { label: string; items: SettingsNavItem[] }[] = [
     items: [
       { href: "/settings/lead-categories", label: "Lead categories", icon: RiPriceTag3Line },
       { href: "/settings/columns", label: "Lead columns", icon: RiLayoutColumnLine },
+      { href: "/settings/candidate-database", label: "Candidate database", icon: RiDatabase2Line },
+      { href: "/settings/audit", label: "Audit log", icon: RiHistoryLine },
     ],
   },
   {

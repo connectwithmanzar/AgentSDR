@@ -1,4 +1,5 @@
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Better Auth's tables: identity (users, sessions, accounts, verifications)
@@ -151,7 +152,10 @@ export const teams = pgTable(
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).$onUpdate(() => new Date()),
   },
-  (t) => [index("teams_organization_id_idx").on(t.organizationId)],
+  (t) => [
+    index("teams_organization_id_idx").on(t.organizationId),
+    uniqueIndex("teams_org_name_uq").on(t.organizationId, sql`lower(${t.name})`),
+  ],
 );
 
 export const teamMembers = pgTable(

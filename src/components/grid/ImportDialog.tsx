@@ -83,6 +83,10 @@ export default function ImportDialog({
 
   const loadPreview = useCallback(
     async (f: File, sheetName?: string) => {
+      if (!tableId) {
+        setError("The table is still being created. Wait a moment, then import again.");
+        return;
+      }
       setBusy(true);
       setError(null);
       try {
@@ -95,6 +99,20 @@ export default function ImportDialog({
           body: fd,
         });
         const d = await res.json();
+        if (res.status === 404) {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          const retry = await fetch(`/api/grid/tables/${tableId}/import`, { method: "POST", body: fd });
+          const retried = await retry.json();
+          if (!retry.ok) {
+            setError(retried.error ?? "The table is not ready yet. Try the import again.");
+            setPreview(null);
+            return;
+          }
+          setPreview(retried);
+          setMapping(retried.mapping);
+          setSheet(sheetName ?? retried.sheetNames[0]);
+          return;
+        }
         if (!res.ok) {
           setError(d.error ?? "Could not read that file");
           setPreview(null);

@@ -8,6 +8,7 @@ import { Frame, FrameHeader, FramePanel } from "@/components/analytics/kit/Frame
 import { useDialogs } from "@/components/DialogProvider";
 import { Callout, Field } from "@/components/settings/SettingsKit";
 import { authClient } from "@/lib/auth/client";
+import { parseInviteEmail } from "@/lib/auth/inviteEmail";
 import { ROLE_LABELS, type OrgRole } from "@/lib/auth/permissions";
 import { asOrgRole, useAsyncAction, useOrgAccess } from "./useOrgAccess";
 
@@ -35,9 +36,14 @@ export function OrgMembers() {
 
   async function invite(e: FormEvent) {
     e.preventDefault();
-    if (!org || !email.trim()) return;
+    if (!org) return;
+    const parsed = parseInviteEmail(email);
+    if (!parsed) {
+      setError("Enter a full email address, like name@company.com.");
+      return;
+    }
     const ok = await run("invite", () =>
-      authClient.organization.inviteMember({ email: email.trim(), role: inviteRole, organizationId: org.id }),
+      authClient.organization.inviteMember({ email: parsed, role: inviteRole, organizationId: org.id }),
     );
     if (ok) {
       setEmail("");

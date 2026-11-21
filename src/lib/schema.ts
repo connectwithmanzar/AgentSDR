@@ -40,6 +40,7 @@ export * from "./auth/schema";
 // columns at runtime, so the definitions here are structurally incomplete by
 // design and drizzle-kit must never diff them. See src/lib/leads/schema.ts.
 export * from "./leads/schema";
+export * from "./leads/deskSchema";
 
 export const domains = pgTable("domains", {
   domain: text("domain").primaryKey(),

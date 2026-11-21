@@ -18,6 +18,17 @@ import type { ManualPersonInput } from "./manualImport";
 const normalizedHeader = (value: unknown) => String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 const cell = (value: unknown) => String(value ?? "").trim() || null;
 
+export function parseImportSheet(buffer: ArrayBuffer): { headers: string[]; rows: string[][] } {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) throw new Error("The file has no worksheet");
+  const values = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false });
+  if (!values.length) throw new Error("The worksheet is empty");
+  const headers = values[0].map((value) => String(value ?? "").trim());
+  const rows = values.slice(1).map((row) => headers.map((_, index) => String(row[index] ?? "").trim()));
+  return { headers, rows };
+}
+
 export function parseImportRows(buffer: ArrayBuffer): ManualPersonInput[] {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];

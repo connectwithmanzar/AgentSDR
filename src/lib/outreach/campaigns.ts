@@ -4,6 +4,7 @@ import { companies, people } from "@/lib/leads/schema";
 import { personVariables, variableValue } from "@/lib/leads/variables";
 import { outreachCampaigns, outreachLeads, outreachEmails, mailboxes } from "./schema";
 import type { SequenceStep, CampaignStatus, OutreachLeadStatus } from "./schema";
+import { assertCampaignHasLeads } from "@/lib/leads/deskRules";
 import { currentOrganizationId, inOrg } from "@/lib/tenancy/scope";
 import { leadsInOrg, orgLeadIds } from "./orgScope";
 
@@ -144,7 +145,19 @@ export async function updateCampaignName(id: string, name: string) {
 }
 
 export async function setCampaignStatus(id: string, status: CampaignStatus) {
-  await db.update(outreachCampaigns).set({ status, updatedAt: new Date() }).where(and(inOrg(outreachCampaigns), eq(outreachCampaigns.id, id)));
+  if (status === "active") {
+    const [row] = await db
+      .select({ total: count() })
+      .from(outreachLeads)
+      .where(and(leadsInOrg(), eq(outreachLeads.campaignId, id)));
+    assertCampaignHasLeads(Number(row?.total ?? 0));
+  }
+  const [updated] = await db
+    .update(outreachCampaigns)
+    .set({ status, updatedAt: new Date() })
+    .where(and(inOrg(outreachCampaigns), eq(outreachCampaigns.id, id)))
+    .returning({ id: outreachCampaigns.id });
+  if (!updated) throw new Error("Campaign not found");
 }
 
 export async function deleteCampaign(id: string) {
@@ -230,6 +243,7 @@ export type LeadPage = {
 
 const LEAD_STATUS_FILTERS: Record<string, OutreachLeadStatus[]> = {
   pending: ["pending"],
+  held: ["held"],
   in_sequence: ["initial_sent", "in_follow_up", "reply_processing"],
   replied: ["reply_received"],
   // completed and suppressed had no filter, which left those leads reachable
@@ -413,7 +427,7 @@ export async function getCampaignStats(campaignId: string) {
     /** Sent + scheduled + failed — the denominator for "N of M sends processed". */
     emailsTotal: emailsSent + emailsScheduled + emailsFailed,
     /** Leads that have been emailed at least once. */
-    contacted: leads.filter((l) => l.sequenceStatus !== "pending").length,
+    contacted: leads.filter((l) => l.sequenceStatus !== "pending" && l.sequenceStatus !== "held").length,
   };
 }
 

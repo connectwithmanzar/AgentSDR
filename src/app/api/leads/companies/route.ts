@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseFieldFilters } from "@/lib/leads/filters";
 import { listCompanies, upsertCompany, withLeadTransaction } from "@/lib/leads/records";
 import { authContextErrorResponse, withOrgContext } from "@/lib/auth/context";
 
@@ -19,7 +20,8 @@ async function list(req: NextRequest) {
     q: req.nextUrl.searchParams.get("q") ?? undefined,
     limit: Number(req.nextUrl.searchParams.get("limit") ?? 50),
     offset: Number(req.nextUrl.searchParams.get("offset") ?? 0),
-    sort: sort === "name" || sort === "domain" || sort === "people" || sort === "updated" ? sort : undefined,
+    sort: sort ?? undefined,
+    filters: parseFieldFilters(req.nextUrl.searchParams.getAll("f")),
     direction: direction === "asc" || direction === "desc" ? direction : undefined,
   });
   return NextResponse.json({ companies: result.rows, total: result.total });

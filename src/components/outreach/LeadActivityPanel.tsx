@@ -29,6 +29,7 @@ type Email = typeof outreachEmails.$inferSelect & { fromAddress?: string | null 
 
 const STATUS_COLOR: Record<OutreachLeadStatus, React.ComponentProps<typeof Badge.Root>["color"]> = {
   pending: "gray",
+  held: "yellow",
   initial_sent: "blue",
   in_follow_up: "blue",
   reply_processing: "yellow",
@@ -39,6 +40,7 @@ const STATUS_COLOR: Record<OutreachLeadStatus, React.ComponentProps<typeof Badge
 };
 const STATUS_LABEL: Record<OutreachLeadStatus, string> = {
   pending: "Pending",
+  held: "Held draft",
   initial_sent: "In sequence",
   in_follow_up: "In sequence",
   reply_processing: "Processing reply",

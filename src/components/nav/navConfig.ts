@@ -6,7 +6,6 @@ import {
   RiShieldCheckLine,
   RiChat3Line,
   RiFilter3Line,
-  RiGlobalLine,
   RiHistoryLine,
   RiInboxLine,
   RiLinkM,
@@ -145,7 +144,7 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Prospecting",
         icon: RiDatabase2Line,
         children: [
-          link("/domains", "All domains", RiGlobalLine),
+          link("/guide", "How to use it", RiBookOpenLine),
           link("/campaigns", "Qualification campaigns", RiFilter3Line),
         ],
       },

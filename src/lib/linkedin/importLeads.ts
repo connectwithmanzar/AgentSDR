@@ -689,7 +689,7 @@ export const importLeadRows = async (
       const rows = await tx.select().from(companies).where(and(inOrg(companies), inArray(companies.domain, batch))).for("update");
       for (const company of rows) {
         const desired = desiredCompanies.get(company.domain);
-        const nextName = desired?.name && desired.name !== company.name ? desired.name : null;
+        const nextName = desired?.name && !company.name ? desired.name : null;
         // Only fills a blank. An existing company LinkedIn URL is a stronger
         // record than a spreadsheet cell, and overwriting it would let one
         // import rewrite the profile link for every lead sharing the domain.
@@ -823,7 +823,7 @@ export const importLeadRows = async (
       for (const domain of batch) {
         const desired = desiredCompanies.get(domain);
         const current = companyCache.get(domain);
-        if (!desired?.name || !current || desired.name === current.name) continue;
+        if (!desired?.name || !current || current.name) continue;
         const [updated] = await tx.update(companies)
           .set({ name: desired.name, updatedAt: new Date() })
           .where(and(inOrg(companies), eq(companies.id, current.id)))

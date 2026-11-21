@@ -5,6 +5,7 @@ import {
 } from "@/lib/crm/categories";
 import { requireCrmMutationContext } from "@/lib/crm/http";
 import {
+  deleteKnowledgeDocument,
   getKnowledgeDocument,
   updateKnowledgeDocument,
 } from "@/lib/crm/knowledge-service";
@@ -31,6 +32,18 @@ export async function PATCH(request: NextRequest, { params }: Context) {
       const { id } = await params;
       const document = await updateKnowledgeDocument(id, await readCrmJson(request));
       return Response.json({ document });
+    });
+  } catch (error) {
+    return crmConfigurationErrorResponse(error);
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: Context) {
+  try {
+    const ctx = await requireCrmMutationContext(request);
+    return await runInOrganization(ctx.organizationId, async () => {
+      const { id } = await params;
+      return Response.json({ deleted: await deleteKnowledgeDocument(id) });
     });
   } catch (error) {
     return crmConfigurationErrorResponse(error);

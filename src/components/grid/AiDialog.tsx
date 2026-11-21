@@ -868,7 +868,7 @@ export default function AiDialog({
               className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-[13px] font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
             >
               {busy && <RiLoader4Line className="size-4 animate-spin" />}
-              Save and run 10 rows
+              {`Save and run ${Math.min(10, firstRowIds.filter((id) => id !== "__coverage").length)} rows`}
             </button>
           </div>
         </div>

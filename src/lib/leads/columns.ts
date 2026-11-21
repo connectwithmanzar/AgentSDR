@@ -43,6 +43,7 @@ import {
   type LeadPgType,
 } from "./types";
 import { currentOrganizationId, inOrg } from "@/lib/tenancy/scope";
+import { ensureRecruiterColumns } from "./recruiterColumns";
 
 /** The table behind each entity. A closed map — never interpolated from input. */
 const TABLE_FOR_ENTITY: Record<LeadEntity, "people" | "companies"> = {
@@ -104,6 +105,7 @@ export async function ensureCoreColumns(): Promise<void> {
     )
     .onConflictDoNothing({ target: [entityColumns.organizationId, entityColumns.entity, entityColumns.key] });
 
+  await ensureRecruiterColumns();
   coreEnsured.add(organizationId);
 }
 

@@ -89,6 +89,38 @@ export function LeadsFilterPopover({ filters, subcategories, onChange, onClear }
               </Select.Content>
             </Select.Root>
           </Field>
+          <Field label="Email status">
+            <Select.Root size="small" value={filters.emailStatus} onValueChange={(value) => onChange({ emailStatus: value })}>
+              <Select.Trigger aria-label="Email status filter"><Select.Value placeholder="Any email status" /></Select.Trigger>
+              <Select.Content>
+                <Select.Item value="">Any email status</Select.Item>
+                {["not contacted", "sent", "followed up", "replied", "bounced", "interested", "not interested"].map((status) => <Select.Item key={status} value={status}>{status}</Select.Item>)}
+              </Select.Content>
+            </Select.Root>
+          </Field>
+          <Field label="City">
+            <input className="w-full rounded-lg border border-stroke-soft-200 px-2 py-1.5 text-paragraph-sm" aria-label="City filter" value={filters.city} onChange={(event) => onChange({ city: event.target.value })} placeholder="Delhi" />
+          </Field>
+          <Field label="Country">
+            <Select.Root size="small" value={filters.country} onValueChange={(value) => onChange({ country: value })}>
+              <Select.Trigger aria-label="Country filter"><Select.Value placeholder="Any country" /></Select.Trigger>
+              <Select.Content>
+                <Select.Item value="">Any country</Select.Item>
+                <Select.Item value="India">India</Select.Item>
+                <Select.Item value="United Arab Emirates">United Arab Emirates</Select.Item>
+              </Select.Content>
+            </Select.Root>
+          </Field>
+          <Field label="Do not contact">
+            <Select.Root size="small" value={filters.dnc} onValueChange={(value) => onChange({ dnc: value === "true" || value === "false" ? value : "" })}>
+              <Select.Trigger aria-label="Do not contact filter"><Select.Value placeholder="Anyone" /></Select.Trigger>
+              <Select.Content>
+                <Select.Item value="">Anyone</Select.Item>
+                <Select.Item value="true">Do not contact</Select.Item>
+                <Select.Item value="false">Can be contacted</Select.Item>
+              </Select.Content>
+            </Select.Root>
+          </Field>
           <div className="space-y-3 border-t border-stroke-soft-200 pt-4">
             <Check id="lead-filter-has-email" label="Has email" checked={filters.hasEmail} onChange={(hasEmail) => onChange({ hasEmail })} />
             <Check id="lead-filter-has-linkedin" label="Has LinkedIn" checked={filters.hasLinkedin} onChange={(hasLinkedin) => onChange({ hasLinkedin })} />

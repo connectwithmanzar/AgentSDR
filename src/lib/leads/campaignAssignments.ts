@@ -1,6 +1,8 @@
 import "server-only";
 
 import { and, eq, inArray } from "drizzle-orm";
+import { crmPersonContactPolicies } from "@/lib/crm/schema";
+import { enrollRefusal } from "./deskRules";
 import { outreachCampaigns, outreachLeads, suppressionList } from "@/lib/outreach/schema";
 import { campaigns as linkedinCampaigns, leads as linkedinLeads } from "@/lib/linkedin/schema";
 import { isInvitationMessageTooLong } from "@/lib/linkedin/invitationMessage";
@@ -13,36 +15,45 @@ export type AssignmentResult = {
   skippedMissingIdentity: number;
   skippedDuplicate: number;
   skippedSuppressed: number;
+  skippedDoNotContact: number;
 };
 
 export async function addPeopleToEmailCampaign(campaignId: string, personIds: string[]): Promise<AssignmentResult> {
   const uniqueIds = [...new Set(personIds.map((id) => id.trim()).filter(Boolean))];
   return withLeadTransaction(async (tx) => {
-    const [campaign] = await tx.select({ id: outreachCampaigns.id }).from(outreachCampaigns).where(and(inOrg(outreachCampaigns), eq(outreachCampaigns.id, campaignId))).limit(1);
+    const [campaign] = await tx.select({ id: outreachCampaigns.id, status: outreachCampaigns.status }).from(outreachCampaigns).where(and(inOrg(outreachCampaigns), eq(outreachCampaigns.id, campaignId))).limit(1);
     if (!campaign) throw new Error("Email campaign not found");
+    if (campaign.status === "active") throw new Error("This campaign is already sending. Add people to a draft so nothing goes out until a person starts it.");
 
     if (!uniqueIds.length) {
-      return { requested: 0, added: 0, skippedMissingIdentity: 0, skippedDuplicate: 0, skippedSuppressed: 0 };
+      return { requested: 0, added: 0, skippedMissingIdentity: 0, skippedDuplicate: 0, skippedSuppressed: 0, skippedDoNotContact: 0 };
     }
 
     const rows = await getPeopleByIds(tx, uniqueIds);
     const emails = rows.flatMap(({ person }) => (person.email ? [person.email] : []));
-    const [existingRows, suppressedRows] = await Promise.all([
+    const [existingRows, suppressedRows, dncRows] = await Promise.all([
       tx.select({ personId: outreachLeads.personId }).from(outreachLeads).where(and(eq(outreachLeads.campaignId, campaignId), inArray(outreachLeads.personId, uniqueIds))),
       emails.length
         ? tx.select({ email: suppressionList.email }).from(suppressionList).where(and(inOrg(suppressionList), inArray(suppressionList.email, emails)))
         : [],
+      tx.select({ personId: crmPersonContactPolicies.personId }).from(crmPersonContactPolicies).where(and(eq(crmPersonContactPolicies.doNotContact, true), inArray(crmPersonContactPolicies.personId, uniqueIds))),
     ]);
     const existing = new Set(existingRows.map((row) => row.personId));
     const suppressed = new Set(suppressedRows.map((row) => row.email.toLowerCase()));
-    const result: AssignmentResult = { requested: uniqueIds.length, added: 0, skippedMissingIdentity: 0, skippedDuplicate: 0, skippedSuppressed: 0 };
+    const doNotContact = new Set(dncRows.map((row) => row.personId));
+    const result: AssignmentResult = { requested: uniqueIds.length, added: 0, skippedMissingIdentity: 0, skippedDuplicate: 0, skippedSuppressed: 0, skippedDoNotContact: 0 };
 
     for (const { person } of rows) {
       if (!person.email) {
         result.skippedMissingIdentity += 1;
         continue;
       }
-      if (suppressed.has(person.email)) {
+      const refusal = enrollRefusal({ doNotContact: doNotContact.has(person.id), suppressed: suppressed.has(person.email) });
+      if (refusal === "do_not_contact") {
+        result.skippedDoNotContact += 1;
+        continue;
+      }
+      if (refusal === "suppressed") {
         result.skippedSuppressed += 1;
         continue;
       }
@@ -90,17 +101,25 @@ export async function addPeopleToLinkedinCampaign(
     }
 
     if (!uniqueIds.length) {
-      return { requested: 0, added: 0, skippedMissingIdentity: 0, skippedDuplicate: 0, skippedSuppressed: 0 };
+      return { requested: 0, added: 0, skippedMissingIdentity: 0, skippedDuplicate: 0, skippedSuppressed: 0, skippedDoNotContact: 0 };
     }
 
     const rows = await getPeopleByIds(tx, uniqueIds);
-    const existingRows = await tx.select({ personId: linkedinLeads.personId }).from(linkedinLeads).where(and(eq(linkedinLeads.campaignId, campaignId), inArray(linkedinLeads.personId, uniqueIds)));
+    const [existingRows, dncRows] = await Promise.all([
+      tx.select({ personId: linkedinLeads.personId }).from(linkedinLeads).where(and(eq(linkedinLeads.campaignId, campaignId), inArray(linkedinLeads.personId, uniqueIds))),
+      tx.select({ personId: crmPersonContactPolicies.personId }).from(crmPersonContactPolicies).where(and(eq(crmPersonContactPolicies.doNotContact, true), inArray(crmPersonContactPolicies.personId, uniqueIds))),
+    ]);
     const existing = new Set(existingRows.map((row) => row.personId));
-    const result: AssignmentResult = { requested: uniqueIds.length, added: 0, skippedMissingIdentity: 0, skippedDuplicate: 0, skippedSuppressed: 0 };
+    const doNotContact = new Set(dncRows.map((row) => row.personId));
+    const result: AssignmentResult = { requested: uniqueIds.length, added: 0, skippedMissingIdentity: 0, skippedDuplicate: 0, skippedSuppressed: 0, skippedDoNotContact: 0 };
 
     for (const { person } of rows) {
       if (!person.linkedinUrl) {
         result.skippedMissingIdentity += 1;
+        continue;
+      }
+      if (doNotContact.has(person.id)) {
+        result.skippedDoNotContact += 1;
         continue;
       }
       if (existing.has(person.id)) {

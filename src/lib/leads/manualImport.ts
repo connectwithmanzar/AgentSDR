@@ -18,6 +18,10 @@ export type ManualPersonInput = {
   notes?: string | null;
   /** Free-form ("+91 98765 43210", "0091…"). Invalid input is dropped, not rejected — see normalizeManualPersonInput. */
   phone?: string | null;
+  personCustom?: Record<string, string>;
+  companyCustom?: Record<string, string>;
+  raw?: Record<string, string>;
+  overwriteCompany?: boolean;
 };
 
 const clean = (value: string | null | undefined) => value?.trim() || null;
@@ -61,13 +65,17 @@ export async function upsertManualPerson(input: ManualPersonInput) {
       fullName: normalized.fullName,
       title: normalized.title,
       phone: normalized.phone,
-      company: normalized.companyName || normalized.companyDomain ? {
-        name: normalized.companyName,
-        domain: normalized.companyDomain,
-      } : null,
-      raw: normalized.notes ? { notes: normalized.notes } : undefined,
+      custom: input.personCustom,
+      company: normalized.companyName || normalized.companyDomain || (input.companyCustom && Object.keys(input.companyCustom).length)
+        ? {
+          name: normalized.companyName,
+          domain: normalized.companyDomain,
+          custom: input.companyCustom,
+        }
+        : null,
+      raw: { ...(input.raw ?? {}), ...(normalized.notes ? { notes: normalized.notes } : {}) },
       source: "manual-people-import",
-    });
+    }, { overwriteCompanyProfile: input.overwriteCompany === true });
     return { personId: person.id, created: existing.length === 0 };
   });
 }

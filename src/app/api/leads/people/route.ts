@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseFieldFilters } from "@/lib/leads/filters";
 import { listPeoplePage } from "@/lib/leads/records";
 import { upsertManualPerson } from "@/lib/leads/manualImport";
 import { authContextErrorResponse, withOrgContext } from "@/lib/auth/context";
@@ -17,7 +18,7 @@ async function listPeople(req: NextRequest) {
   const limit = Number(req.nextUrl.searchParams.get("limit") ?? 50);
   const offset = Number(req.nextUrl.searchParams.get("offset") ?? 0);
   const campaignChannel = req.nextUrl.searchParams.get("campaignChannel");
-  const sort = req.nextUrl.searchParams.get("sort");
+  const sort = req.nextUrl.searchParams.get("sort") ?? undefined;
   const direction = req.nextUrl.searchParams.get("direction");
   const crmCategory = req.nextUrl.searchParams.get("crmCategory");
   const crmWorkflowState = req.nextUrl.searchParams.get("crmWorkflowState");
@@ -29,7 +30,8 @@ async function listPeople(req: NextRequest) {
     hasEmail: req.nextUrl.searchParams.get("hasEmail") === "true" ? true : undefined,
     hasLinkedin: req.nextUrl.searchParams.get("hasLinkedin") === "true" ? true : undefined,
     hasPhone: req.nextUrl.searchParams.get("hasPhone") === "true" ? true : undefined,
-    sort: sort === "name" || sort === "title" || sort === "email" || sort === "company" || sort === "updated" || sort === "created" ? sort : undefined,
+    sort,
+    filters: parseFieldFilters(req.nextUrl.searchParams.getAll("f")),
     direction: direction === "asc" || direction === "desc" ? direction : undefined,
     crmCategory: crmCategory === "customer" || crmCategory === "interested" || crmCategory === "not_interested" || crmCategory === "other" ? crmCategory : undefined,
     crmWorkflowState: crmWorkflowState === "unclassified" || crmWorkflowState === "classifying" || crmWorkflowState === "action_required" || crmWorkflowState === "waiting" || crmWorkflowState === "idle" || crmWorkflowState === "paused" || crmWorkflowState === "closed" || crmWorkflowState === "error" ? crmWorkflowState : undefined,

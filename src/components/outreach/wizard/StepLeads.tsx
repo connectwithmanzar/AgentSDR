@@ -190,7 +190,7 @@ export default function StepLeads({
         <Button.Root variant="neutral" mode="ghost" size="medium" onClick={onBack}>
           <Button.Icon as={RiArrowLeftLine} />Back
         </Button.Root>
-        <Button.Root onClick={() => onContinue(leadCount)} disabled={loadingCount}>
+        <Button.Root onClick={() => { void fetchLeadCount().then((count) => { setLeadCount(count); onContinue(count); }).catch((cause) => setError(cause instanceof Error ? cause.message : "Could not refresh campaign leads")); }} disabled={loadingCount}>
           Continue<Button.Icon as={RiArrowRightLine} />
         </Button.Root>
       </div>
