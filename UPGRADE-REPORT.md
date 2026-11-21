@@ -20,7 +20,7 @@ Roles stay owner, admin, and member. A fourth finance role would change Better A
 
 ## Verify locally
 
-`bun run typecheck` passed. The new unit tests passed (`companyProfile`, `filters`, `deskRules`, `importMapping`, `draftLeads`, `inviteEmail`, `mergeToken`). `src/lib/leads/gridCampaigns.test.mjs` loads the server graph and needs `DATABASE_URL`; this machine has no `.env.local`, so that file was not executed. The app was not clicked through against a database.
+`bun run typecheck` passed. The new unit tests passed (`companyProfile`, `filters`, `deskRules`, `importMapping`, `draftLeads`, `inviteEmail`, `mergeToken`). `src/lib/leads/gridCampaigns.test.mjs` loads the server graph and needs `DATABASE_URL`; this machine has no `.env.local`, so that file was not executed. The app was not clicked through against a database. This machine has no Docker CLI, so `agentsdr:local` was not built here. Run the compose command below on a machine that has Docker.
 
 ## Upgrade a running 0.3.1 container
 
