@@ -16,20 +16,34 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Patch Dockerfile to include the self-contained migrator
+      - name: Patch Dockerfile and dockerignore for the self-contained migrator
         run: |
           test -s scripts/migrate-career-one-stop-recruiter-desk-standalone.ts
           python3 -c '
           from pathlib import Path
+
+          ignore = Path(".dockerignore")
+          text = ignore.read_text()
+          allow = "!scripts/migrate-career-one-stop-recruiter-desk-standalone.ts"
+          if allow not in text:
+              if not text.endswith("\n"):
+                  text += "\n"
+              ignore.write_text(text + allow + "\n")
+              print("dockerignore patched")
+          else:
+              print("dockerignore already allows standalone migrator")
+
           p = Path("Dockerfile")
-          text = p.read_text()
+          docker = p.read_text()
           needle = "USER nextjs"
           insert = "# Recruiter-desk migrator (self-contained; no drizzle graph)\nCOPY --from=builder --chown=nextjs:nodejs /app/scripts/migrate-career-one-stop-recruiter-desk-standalone.ts ./scripts/migrate-career-one-stop-recruiter-desk.ts\n"
-          if needle not in text:
+          if needle not in docker:
               raise SystemExit("Dockerfile missing USER nextjs")
-          if "migrate-career-one-stop-recruiter-desk.ts" not in text:
-              p.write_text(text.replace(needle, insert + "\n" + needle, 1))
-          print("Dockerfile patched")
+          if "migrate-career-one-stop-recruiter-desk.ts" not in docker:
+              p.write_text(docker.replace(needle, insert + "\n" + needle, 1))
+              print("Dockerfile patched")
+          else:
+              print("Dockerfile already includes migrator")
           '
 
       - uses: docker/setup-buildx-action@v4
