@@ -45,3 +45,27 @@ The script is safe to re-run. It creates the desk tables and missing Lead column
 5. Start the new container with the same env file and the same volumes. Point the app service at `agentsdr:local` instead of `ghcr.io/kandid-ai/agentsdr:0.3.1`.
 
 Do not run `drizzle-kit push`. Lead tables stay out of `OWNED_TABLES`.
+
+## Sending rules
+
+Hours, the daily cap, and the gap between sends are edited by an owner or admin at Settings → Email → Sending rules. The organization default is Asia/Kolkata. Those rules apply when a person starts a campaign. A held draft and an import do not send.
+
+## What stays compatible
+
+`people.custom`, `people.raw`, the suppression list, the mailbox, and Knowledge documents are not rewritten. City, country, and email status are keys inside `custom` (`x_city`, `x_country`, `x_email_status`). Merge fields such as `s1_subject` stay in `people.raw`. The 40-lead draft campaign is not started.
+
+## Checks on this machine
+
+- `bun run typecheck` passed.
+- `bun run lint` passed with 0 errors and 10 warnings that were already in LinkedIn, calling, and ElevenLabs files.
+- `bun test --conditions=react-server`: 1309 passed, 0 failed, and 1 unhandled error while loading `src/lib/calls/remoteRep.test.ts` (`AsyncLocalStorage` is not available in that Next.js module). That file is not part of the desk change.
+- No `.env.local` and no Docker CLI, so `db:check` and `docker compose build` were not run here.
+
+## Click through after the database is up
+
+- Import a CSV whose domain matches an existing company and leave overwrite off. The company name stays.
+- Open a person with no CRM record, mark Do Not Contact, and confirm they are skipped when added to a draft.
+- Save a people view, reload, and confirm the email-status filter is still on.
+- On a campaign, approve held drafts and confirm the campaign status does not become active.
+- Settings → Candidate database accepts only an `https://` URL. Settings → Audit log shows times in IST.
+- Analytics shows “Today in India”. `/guide` does not mention a Dubai office or fees.
