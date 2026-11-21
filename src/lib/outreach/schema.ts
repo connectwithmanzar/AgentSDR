@@ -124,6 +124,7 @@ export const outreachCampaigns = pgTable("outreach_campaigns", {
 
 export type OutreachLeadStatus =
   | "pending"
+  | "held"
   | "initial_sent"
   | "in_follow_up"
   | "reply_processing"

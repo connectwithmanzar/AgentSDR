@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   assertExactKeys,
@@ -11,6 +11,7 @@ import {
 } from "./categories";
 import { CrmNotFoundError, withCrmTransaction } from "./repository";
 import {
+  crmDraftKnowledgeCitations,
   crmKnowledgeDocuments,
   crmKnowledgeDocumentVersions,
   type CrmKnowledgeKind,
@@ -199,5 +200,27 @@ export async function updateKnowledgeDocument(id: string, value: unknown) {
       .returning();
     if (!updated) throw new Error("Knowledge document update did not return a row");
     return { ...updated, latest: version };
+  });
+}
+
+/** Citations, then versions, then the document, in one transaction so the deferred version FK can drop. */
+export async function deleteKnowledgeDocument(id: string) {
+  const documentId = parseUuid(id, "knowledge document id");
+  return withCrmTransaction(async (tx) => {
+    const versions = await tx
+      .select({ id: crmKnowledgeDocumentVersions.id })
+      .from(crmKnowledgeDocumentVersions)
+      .where(eq(crmKnowledgeDocumentVersions.documentId, documentId));
+    const versionIds = versions.map((row) => row.id);
+    if (versionIds.length) {
+      await tx.delete(crmDraftKnowledgeCitations).where(inArray(crmDraftKnowledgeCitations.documentVersionId, versionIds));
+      await tx.delete(crmKnowledgeDocumentVersions).where(eq(crmKnowledgeDocumentVersions.documentId, documentId));
+    }
+    const [deleted] = await tx
+      .delete(crmKnowledgeDocuments)
+      .where(and(inOrg(crmKnowledgeDocuments), eq(crmKnowledgeDocuments.id, documentId)))
+      .returning({ id: crmKnowledgeDocuments.id });
+    if (!deleted) throw new CrmNotFoundError("Knowledge document", documentId);
+    return deleted;
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import * as Button from "@/components/alignui/button";
 import * as Input from "@/components/alignui/input";
 import * as Select from "@/components/alignui/select";
@@ -16,6 +16,7 @@ export function OrgTeams() {
   const { org, role, loading, error: loadError, can } = useOrgAccess();
   const dialogs = useDialogs();
   const { busy, error, run } = useAsyncAction();
+  const creating = useRef(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamMembers, setTeamMembers] = useState<Record<string, string[]>>({});
   const [newName, setNewName] = useState("");
@@ -55,11 +56,16 @@ export function OrgTeams() {
 
   async function create(e: FormEvent) {
     e.preventDefault();
-    if (!org || !newName.trim()) return;
-    const ok = await run("create", () => authClient.organization.createTeam({ name: newName.trim(), organizationId: org.id }));
-    if (ok) {
-      setNewName("");
-      await loadTeams();
+    if (!org || !newName.trim() || creating.current) return;
+    creating.current = true;
+    try {
+      const ok = await run("create", () => authClient.organization.createTeam({ name: newName.trim(), organizationId: org.id }));
+      if (ok) {
+        setNewName("");
+        await loadTeams();
+      }
+    } finally {
+      creating.current = false;
     }
   }
 

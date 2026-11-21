@@ -1,12 +1,17 @@
-import { and, asc, count, desc, eq, exists, ilike, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies, people } from "./schema";
 import { outreachCampaigns, outreachLeads } from "@/lib/outreach/schema";
 import { campaigns as linkedinCampaigns, leads as linkedinLeads } from "@/lib/linkedin/schema";
+import { nextCompanyProfile } from "./companyProfile";
 import { inferCompanyDomainFromEmail, normalizeCompanyDomain, normalizeEmail, normalizeLinkedinSlug } from "./identity";
 import { personProfile } from "./variables";
 import { crmProjectionForPeople } from "@/lib/crm/queries";
-import { crmClassifications, crmRecords } from "@/lib/crm/schema";
+import { crmClassifications, crmPersonContactPolicies, crmRecords } from "@/lib/crm/schema";
+import { suppressionList } from "@/lib/outreach/schema";
+import { listColumns } from "./columns";
+import type { FieldFilter } from "./filters";
+import { companyFilterSql, companySortExpr, personFilterSql, personSortExpr } from "./listFilters";
 import { currentOrganizationId, inOrg } from "@/lib/tenancy/scope";
 
 export type LeadTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -18,6 +23,8 @@ export type LeadMutationContext = {
   companyCache?: Map<string, typeof companies.$inferSelect>;
   personCache?: Map<string, PersonSnapshot>;
   replaceNames?: boolean;
+  /** When false (the default), an existing domain keeps its name and profile. */
+  overwriteCompanyProfile?: boolean;
 };
 
 export type CanonicalPersonInput = {
@@ -34,8 +41,10 @@ export type CanonicalPersonInput = {
     domain?: string | null;
     name?: string | null;
     linkedinUrl?: string | null;
+    custom?: Record<string, unknown>;
     raw?: Record<string, unknown>;
   } | null;
+  custom?: Record<string, unknown>;
   raw?: Record<string, unknown>;
   source: string;
 };
@@ -121,47 +130,48 @@ export async function upsertCompany(
     linkedinUrl: clean(input.linkedinUrl),
     raw: input.raw ?? {},
   };
-  const cached = context?.companyCache?.get(domain);
-  if (cached) {
-    const unchanged = (values.name === null || cached.name === values.name)
-      && (values.linkedinUrl === null || cached.linkedinUrl === values.linkedinUrl)
-      && Object.entries(values.raw).every(([key, value]) => cached.raw?.[key] === value);
-    if (unchanged) return cached;
+  const overwrite = context?.overwriteCompanyProfile === true;
+  const applyExisting = async (current: typeof companies.$inferSelect) => {
+    const decision = nextCompanyProfile(
+      {
+        name: current.name,
+        linkedinUrl: current.linkedinUrl,
+        custom: (current.custom ?? {}) as Record<string, unknown>,
+        raw: (current.raw ?? {}) as Record<string, unknown>,
+      },
+      { name: values.name, linkedinUrl: values.linkedinUrl, custom: input.custom, raw: values.raw },
+      overwrite,
+    );
+    if (!decision.write) {
+      context?.companyCache?.set(domain, current);
+      return current;
+    }
     const [updated] = await tx
       .update(companies)
       .set({
-        name: values.name ?? cached.name,
-        linkedinUrl: values.linkedinUrl ?? cached.linkedinUrl,
-        raw: { ...(cached.raw ?? {}), ...values.raw },
+        name: decision.profile.name,
+        linkedinUrl: decision.profile.linkedinUrl,
+        custom: decision.profile.custom,
+        raw: decision.profile.raw,
         updatedAt: new Date(),
       })
-      .where(and(inOrg(companies), eq(companies.id, cached.id)))
+      .where(and(inOrg(companies), eq(companies.id, current.id)))
       .returning();
     context?.companyCache?.set(domain, updated);
     return updated;
-  }
+  };
+
+  const cached = context?.companyCache?.get(domain);
+  if (cached) return applyExisting(cached);
 
   await lockIdentities(tx, [`company:${domain}`]);
   const [existing] = await tx.select().from(companies).where(and(inOrg(companies), eq(companies.domain, domain))).limit(1);
 
-  if (existing) {
-    const [updated] = await tx
-      .update(companies)
-      .set({
-        name: values.name ?? existing.name,
-        linkedinUrl: values.linkedinUrl ?? existing.linkedinUrl,
-        raw: { ...(existing.raw ?? {}), ...values.raw },
-        updatedAt: new Date(),
-      })
-      .where(and(inOrg(companies), eq(companies.id, existing.id)))
-      .returning();
-    context?.companyCache?.set(domain, updated);
-    return updated;
-  }
+  if (existing) return applyExisting(existing);
 
   const [created] = await tx
     .insert(companies)
-    .values({ organizationId: currentOrganizationId(), domain, ...values, source: input.source })
+    .values({ organizationId: currentOrganizationId(), domain, ...values, custom: input.custom ?? {}, source: input.source })
     .returning();
   context?.companyCache?.set(domain, created);
   return created;
@@ -225,6 +235,7 @@ export async function upsertPerson(tx: LeadExecutor, input: CanonicalPersonInput
         profilePictureUrl: next.profilePictureUrl ?? existing.profilePictureUrl,
         phone: next.phone ?? existing.phone,
         companyId: next.companyId ?? existing.companyId,
+        custom: mergePersonRaw((existing.custom ?? {}) as Record<string, unknown>, input.custom ?? {}),
         raw: mergePersonRaw(existing.raw, next.raw),
         updatedAt: new Date(),
       })
@@ -234,7 +245,12 @@ export async function upsertPerson(tx: LeadExecutor, input: CanonicalPersonInput
     return updated;
   }
 
-  const [created] = await tx.insert(people).values({ organizationId: currentOrganizationId(), ...next, source: input.source }).returning();
+  const [created] = await tx.insert(people).values({
+    organizationId: currentOrganizationId(),
+    ...next,
+    custom: input.custom ?? {},
+    source: input.source,
+  }).returning();
   context?.personCache?.set(created.id, created);
   return created;
 }
@@ -347,22 +363,26 @@ type PersonListInput = {
   q?: string;
   limit?: number;
   offset?: number;
+  /** Export uses a higher cap than the interactive table. */
+  maxLimit?: number;
   campaignChannel?: "email" | "linkedin" | "unassigned";
   hasEmail?: boolean;
   hasLinkedin?: boolean;
   hasPhone?: boolean;
-  sort?: "name" | "title" | "email" | "company" | "updated" | "created";
+  sort?: string;
   direction?: "asc" | "desc";
+  filters?: FieldFilter[];
   crmCategory?: "customer" | "interested" | "not_interested" | "other";
   crmWorkflowState?: "unclassified" | "classifying" | "action_required" | "waiting" | "idle" | "paused" | "closed" | "error";
   crmSubcategoryId?: string;
   crmAiChange?: boolean;
 };
 
-function listBounds(input: { limit?: number; offset?: number }) {
+function listBounds(input: { limit?: number; offset?: number; maxLimit?: number }) {
   const requestedLimit = Number.isFinite(input.limit) ? Math.floor(input.limit!) : 50;
   const requestedOffset = Number.isFinite(input.offset) ? Math.floor(input.offset!) : 0;
-  return { limit: Math.min(Math.max(requestedLimit, 1), 200), offset: Math.max(requestedOffset, 0) };
+  const cap = Math.min(Math.max(input.maxLimit ?? 200, 1), 10000);
+  return { limit: Math.min(Math.max(requestedLimit, 1), cap), offset: Math.max(requestedOffset, 0) };
 }
 
 export async function campaignMemberships(personIds: string[]) {
@@ -391,7 +411,9 @@ export async function campaignMemberships(personIds: string[]) {
 
 export async function listPeoplePage(input: PersonListInput = {}) {
   const { limit, offset } = listBounds(input);
+  const columns = await listColumns("person");
   const term = input.q?.trim() ? `%${input.q.trim()}%` : null;
+  const fieldFilters = (input.filters ?? []).map((filter) => personFilterSql(filter, columns)).filter((item): item is SQL => Boolean(item));
   const conditions = [
     inOrg(people),
     term ? or(ilike(people.email, term), ilike(people.linkedinUrl, term), ilike(people.fullName, term), ilike(people.title, term), ilike(companies.name, term), ilike(companies.domain, term), sql`${people.raw}::text ilike ${term}`, sql`${people.custom}::text ilike ${term}`) : undefined,
@@ -414,22 +436,29 @@ export async function listPeoplePage(input: PersonListInput = {}) {
         .innerJoin(crmRecords, eq(crmRecords.id, crmClassifications.crmRecordId))
         .where(and(eq(crmRecords.personId, people.id), sql`${crmClassifications.acknowledgedAt} is null`)),
     ) : undefined,
+    ...fieldFilters,
   ].filter(Boolean);
   const where = conditions.length ? and(...conditions) : undefined;
-  const sortColumn = {
-    name: people.fullName,
-    title: people.title,
-    email: people.email,
-    company: companies.name,
-    created: people.createdAt,
-    updated: people.updatedAt,
-  }[input.sort ?? "updated"];
-  const order = input.direction === "asc" ? asc(sortColumn) : desc(sortColumn);
+  const sortExpr = personSortExpr(input.sort ?? "updated", columns);
+  const order = input.direction === "asc" ? asc(sortExpr) : desc(sortExpr);
+  const joined = {
+    from: people,
+    company: and(eq(people.companyId, companies.id), inOrg(companies)),
+    policy: eq(crmPersonContactPolicies.personId, people.id),
+    suppression: and(inOrg(suppressionList), sql`lower(${people.email}) = ${suppressionList.email}`),
+  };
   const [rows, [{ total }]] = await Promise.all([
     db
-      .select({ person: people, company: companies })
-      .from(people)
-      .leftJoin(companies, and(eq(people.companyId, companies.id), inOrg(companies)))
+      .select({
+        person: people,
+        company: companies,
+        doNotContact: sql<boolean>`coalesce(${crmPersonContactPolicies.doNotContact}, false)`,
+        suppressionReason: suppressionList.reason,
+      })
+      .from(joined.from)
+      .leftJoin(companies, joined.company)
+      .leftJoin(crmPersonContactPolicies, joined.policy)
+      .leftJoin(suppressionList, joined.suppression)
       .where(where)
       .orderBy(order, asc(people.id))
       .limit(limit)
@@ -437,20 +466,24 @@ export async function listPeoplePage(input: PersonListInput = {}) {
     db
       .select({ total: count() })
       .from(people)
-      .leftJoin(companies, and(eq(people.companyId, companies.id), inOrg(companies)))
+      .leftJoin(companies, joined.company)
+      .leftJoin(crmPersonContactPolicies, joined.policy)
+      .leftJoin(suppressionList, joined.suppression)
       .where(where),
   ]);
   const memberships = await campaignMemberships(rows.map((row) => row.person.id));
   const crm = await crmProjectionForPeople(rows.map((row) => row.person.id));
   return {
     total,
-    rows: rows.map(({ person, company }) => {
+    rows: rows.map(({ person, company, doNotContact, suppressionReason }) => {
     const profile = personProfile(person, company);
     return {
       person: { ...person, fullName: profile.name, firstName: profile.firstName, lastName: profile.lastName, title: profile.headline },
       company,
       campaigns: memberships.get(person.id) ?? [],
       crm: crm.get(person.id) ?? null,
+      doNotContact: Boolean(doNotContact),
+      suppressionReason: suppressionReason ?? null,
     };
     }),
   };
@@ -460,16 +493,19 @@ export async function listPeople(input: { q?: string; limit?: number; offset?: n
   return (await listPeoplePage(input)).rows;
 }
 
-export async function listCompanies(input: { q?: string; limit?: number; offset?: number; sort?: "name" | "domain" | "people" | "updated"; direction?: "asc" | "desc" } = {}) {
+export async function listCompanies(input: { q?: string; limit?: number; offset?: number; maxLimit?: number; sort?: string; direction?: "asc" | "desc"; filters?: FieldFilter[] } = {}) {
   const { limit, offset } = listBounds(input);
+  const columns = await listColumns("company");
   const term = input.q?.trim() ? `%${input.q.trim()}%` : null;
+  const fieldFilters = (input.filters ?? []).map((filter) => companyFilterSql(filter, columns)).filter((item): item is SQL => Boolean(item));
   const where = and(
     inOrg(companies),
     term ? or(ilike(companies.name, term), ilike(companies.domain, term), sql`${companies.raw}::text ilike ${term}`, sql`${companies.custom}::text ilike ${term}`) : undefined,
+    ...fieldFilters,
   );
   const peopleCount = count(people.id);
-  const sortColumn = { name: companies.name, domain: companies.domain, people: peopleCount, updated: companies.updatedAt }[input.sort ?? "updated"];
-  const order = input.direction === "asc" ? asc(sortColumn) : desc(sortColumn);
+  const sortExpr = companySortExpr(input.sort ?? "updated", columns, sql`${peopleCount}`);
+  const order = input.direction === "asc" ? asc(sortExpr) : desc(sortExpr);
   const [rows, [{ total }]] = await Promise.all([
     db
     .select({ company: companies, peopleCount: count(people.id) })

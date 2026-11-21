@@ -19,7 +19,11 @@ import { CompaniesTable } from "./CompaniesTable";
 import { LeadsFilterPopover, type Subcategory } from "./LeadsFilterPopover";
 import { PeopleImportModal } from "./PeopleImportModal";
 import { PeopleTable } from "./PeopleTable";
-import { activeFilterCount, EMPTY_FILTERS, PAGE_SIZE, SORTS, type CompanyRow, type Direction, type LeadsTab, type PeopleFilters, type PersonRow } from "./leadTypes";
+import { activeFilterCount, EMPTY_FILTERS, PAGE_SIZE, peopleFieldFilters, SORTS, type CompanyRow, type Direction, type LeadsTab, type PeopleFilters, type PersonRow } from "./leadTypes";
+import { GettingStarted } from "./GettingStarted";
+import { LeadBulkBar } from "./LeadBulkBar";
+import { LeadProfileDrawer } from "./LeadProfileDrawer";
+import { SavedPeopleViews } from "./SavedPeopleViews";
 
 type ListState<F> = { query: string; filters: F; sort: string; direction: Direction; page: number };
 type Data<R> = { rows: R[]; total: number } | null;
@@ -43,6 +47,7 @@ function requestUrl(tab: LeadsTab, state: ListState<PeopleFilters | null>): stri
     if (f.crmSubcategoryId) params.set("crmSubcategoryId", f.crmSubcategoryId);
     if (f.crmWorkflowState) params.set("crmWorkflowState", f.crmWorkflowState);
     if (f.crmAiChange) params.set("crmAiChange", "true");
+    for (const filter of peopleFieldFilters(f)) params.append("f", filter);
   }
   return `/api/leads/${tab}?${params}`;
 }
@@ -70,6 +75,10 @@ export default function LeadsClient({ initialTab, initialRows, initialTotal }: P
   const [error, setError] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
   const [showImport, setShowImport] = useState(false);
+  const [openPersonId, setOpenPersonId] = useState<string | null>(null);
+  const [openCompanyId, setOpenCompanyId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkNote, setBulkNote] = useState("");
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const skipUrl = useRef<string | null>(requestUrl(initialTab, initialTab === "people" ? freshPeople() : freshCompanies()));
 
@@ -120,12 +129,7 @@ export default function LeadsClient({ initialTab, initialRows, initialTotal }: P
 
   // A company row opens the People tab searched to its domain.
   const openCompany = (row: CompanyRow) => {
-    setError("");
-    setLoading(false);
-    setPeopleState({ ...freshPeople(), query: row.company.domain });
-    setPeopleData(null);
-    setTab("people");
-    window.history.replaceState(null, "", `${pathname}?tab=people`);
+    setOpenCompanyId(row.company.id);
   };
 
   const patch = useCallback((change: Partial<ListState<PeopleFilters | null>>) => {
@@ -150,12 +154,12 @@ export default function LeadsClient({ initialTab, initialRows, initialTotal }: P
   const refetch = () => setReloadToken((value) => value + 1);
 
   const table = isPeople
-    ? <PeopleTable rows={error ? [] : peopleData?.rows ?? null} sort={state.sort} direction={state.direction} onSort={onSort} loading={loading} />
+    ? <PeopleTable rows={error ? [] : peopleData?.rows ?? null} sort={state.sort} direction={state.direction} onSort={onSort} loading={loading} onOpen={(row) => setOpenPersonId(row.person.id)} selected={selected} onSelected={setSelected} />
     : <CompaniesTable rows={error ? [] : companiesData?.rows ?? null} sort={state.sort} direction={state.direction} onSort={onSort} loading={loading} onOpen={openCompany} />;
 
   const tabs = [
     { value: "people" as const, label: "People", icon: RiUserLine },
-    { value: "companies" as const, label: "Companies", icon: RiBuilding2Line },
+    { value: "companies" as const, label: "Accounts", icon: RiBuilding2Line },
   ];
 
   return (
@@ -163,15 +167,16 @@ export default function LeadsClient({ initialTab, initialRows, initialTotal }: P
       <PageContainer>
         <PageHeader
           title="Leads"
-          description="Every person and company you can reach, with their outreach and CRM state."
+          description="People and accounts for outreach to companies that are hiring. Candidates stay in the external ATS."
           actions={isPeople && <Button.Root variant="primary" mode="filled" size="small" onClick={() => setShowImport(true)}><Button.Icon as={RiUpload2Line} />Import people</Button.Root>}
         />
 
+        <GettingStarted />
         <PageTabs className="mt-6" label="Lead type" tabs={tabs} value={tab} onChange={switchTab} />
 
         <Frame className="mt-5">
           <FrameHeader
-            title={isPeople ? "People" : "Companies"}
+            title={isPeople ? "People" : "Accounts"}
             description={<span aria-live="polite">{data ? `${total.toLocaleString("en-US")} ${total === 1 ? (isPeople ? "person" : "company") : noun}${filtersOn || searching ? " match" : ""}` : `Loading ${noun}…`}</span>}
             actions={
               <>
@@ -212,7 +217,17 @@ export default function LeadsClient({ initialTab, initialRows, initialTotal }: P
               </>
             }
           />
+          {isPeople && (
+            <SavedPeopleViews
+              filters={peopleState.filters}
+              sort={peopleState.sort}
+              direction={peopleState.direction}
+              onApply={(next) => setPeopleState((current) => ({ ...current, ...next, page: 0 }))}
+            />
+          )}
           <FramePanel className="p-2 sm:p-2">
+            {isPeople && <LeadBulkBar ids={selected} rows={peopleData?.rows ?? []} onDone={(message) => { setBulkNote(message); refetch(); }} />}
+            {bulkNote && <p className="px-3 py-2 text-paragraph-sm text-text-sub-600">{bulkNote}</p>}
             {error && <div className="p-2"><ErrorState message={error} onRetry={refetch} /></div>}
             {showEmpty ? (
               <EmptyState
@@ -246,6 +261,12 @@ export default function LeadsClient({ initialTab, initialRows, initialTotal }: P
           )}
         </Frame>
         {showImport && <PeopleImportModal onClose={() => setShowImport(false)} onImported={() => { setPeopleState(freshPeople()); refetch(); }} />}
+        <LeadProfileDrawer
+          personId={openPersonId}
+          companyId={openCompanyId}
+          onClose={() => { setOpenPersonId(null); setOpenCompanyId(null); }}
+          onChanged={refetch}
+        />
       </PageContainer>
     </main>
   );

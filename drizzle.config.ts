@@ -126,6 +126,10 @@ const OWNED_TABLES = [
   "whatsapp_campaigns",
   "whatsapp_chats",
   "whatsapp_messages",
+  "lead_saved_views",
+  "lead_activity_events",
+  "organization_audit_log",
+  "organization_desk_settings",
 ];
 
 export default {

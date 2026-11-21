@@ -11,6 +11,7 @@ import { mcp } from "@better-auth/mcp";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { authEmail, sendAuthEmail } from "./email";
+import { parseInviteEmail } from "./inviteEmail";
 import { ac, roles } from "./permissions";
 import { authSchema, members } from "./schema";
 import { mayCreateAccount, mayCreateOrganization } from "./signup";
@@ -161,6 +162,10 @@ export const auth = betterAuth({
       invitationExpiresIn: 7 * 24 * 60 * 60,
       cancelPendingInvitationsOnReInvite: true,
       sendInvitationEmail: async ({ id, email, organization, inviter }) => {
+        if (!parseInviteEmail(email)) {
+          console.error("[auth] invitation email refused: invalid address");
+          return;
+        }
         void sendAuthEmail(
           authEmail({
             to: email,

@@ -1,6 +1,8 @@
 import {
   RiBookOpenLine,
   RiBuilding2Line,
+  RiDatabase2Line,
+  RiHistoryLine,
   RiCpuLine,
   RiEqualizerLine,
   RiGroupLine,
@@ -96,6 +98,8 @@ export const SETTINGS_NAV: { label: string; items: SettingsNavItem[] }[] = [
     items: [
       { href: "/settings/lead-categories", label: "Lead categories", icon: RiPriceTag3Line },
       { href: "/settings/columns", label: "Lead columns", icon: RiLayoutColumnLine },
+      { href: "/settings/candidate-database", label: "Candidate database", icon: RiDatabase2Line },
+      { href: "/settings/audit", label: "Audit log", icon: RiHistoryLine },
     ],
   },
   {

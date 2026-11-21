@@ -116,6 +116,19 @@ export default function CrmKnowledgeClient() {
     }
   };
 
+  const remove = async (document: Document) => {
+    if (!window.confirm(`Delete “${String(document.title || "this document")}”? Drafts that cited it keep their sent text, and the citation rows are removed.`)) return;
+    setBusyId(String(document.id));
+    try {
+      await crmFetch(`/knowledge/${String(document.id)}`, { method: "DELETE" });
+      await load(false);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const archive = async (document: Document) => {
     setBusyId(String(document.id));
     try {
@@ -282,6 +295,10 @@ export default function CrmKnowledgeClient() {
                               <Dropdown.Item onSelect={() => openEditor(document)}>
                                 <Dropdown.ItemIcon as={RiPencilLine} />
                                 Edit
+                              </Dropdown.Item>
+                              <Dropdown.Item onSelect={() => void remove(document)}>
+                                <Dropdown.ItemIcon as={RiArchiveLine} />
+                                Delete
                               </Dropdown.Item>
                               <Dropdown.Item onSelect={() => void archive(document)}>
                                 <Dropdown.ItemIcon as={archived ? RiArrowGoBackLine : RiArchiveLine} />

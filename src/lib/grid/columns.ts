@@ -54,11 +54,34 @@ export function toColumnKey(label: string): string {
 
 /** Appends a numeric suffix until the key is free within the table. */
 export function uniqueColumnKey(label: string, taken: Set<string>): string {
-  const base = toColumnKey(label) || "column";
+  const base = preferredMergeToken(label) || "column";
   if (!taken.has(base)) return base;
   let n = 2;
   while (taken.has(`${base}${n}`)) n += 1;
   return `${base}${n}`;
+}
+
+/**
+ * The token a new column is addressed by. An explicit `{{first_name}}` (or a
+ * snake_case identifier) is kept. A fresh table's seed column is keyed
+ * "name"; replacing that seed must not leave the new column as `{{name}}`.
+ */
+export function preferredMergeToken(label: string): string {
+  const trimmed = label.trim();
+  const wrapped = trimmed.match(/^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$/);
+  if (wrapped) return wrapped[1];
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed) && trimmed.includes("_")) return trimmed;
+  return toColumnKey(trimmed);
+}
+
+export function columnKeyReplacingSeed(label: string, seedKey: string): string {
+  const taken = new Set<string>();
+  if (seedKey && seedKey !== "name") taken.add(seedKey);
+  const key = uniqueColumnKey(label, taken);
+  if (key === "name" && preferredMergeToken(label) !== "name") {
+    return uniqueColumnKey(label, new Set(["name"]));
+  }
+  return key;
 }
 
 /**

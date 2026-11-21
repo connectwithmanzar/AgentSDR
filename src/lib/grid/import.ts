@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { gridColumns, gridRows } from "./schema";
-import { listColumns, toColumnKey, uniqueColumnKey, uniqueColumnName } from "./columns";
+import { columnKeyReplacingSeed, listColumns, toColumnKey, uniqueColumnKey, uniqueColumnName } from "./columns";
 import { coerceClipboardValue, parseNumericText } from "./clipboard";
 import { MAX_NAME_LENGTH } from "./validate";
 import { insertRows } from "./rows";
@@ -341,11 +341,14 @@ export async function importRows(
   if (seedMapping) {
     const seed = existing[0];
     const nextName = seedMapping.name.trim() || seed.name;
+    const nextKey = columnKeyReplacingSeed(nextName, seed.key);
     await db
       .update(gridColumns)
-      .set({ name: nextName, type: seedMapping.type, updatedAt: new Date() })
+      .set({ key: nextKey, name: nextName, type: seedMapping.type, updatedAt: new Date() })
       .where(and(inOrgTables(gridColumns.tableId), eq(gridColumns.id, seed.id)));
-    target.set(seedMapping.headerIndex, seed.key);
+    taken.delete(seed.key);
+    taken.add(nextKey);
+    target.set(seedMapping.headerIndex, nextKey);
     takenNames.splice(0, takenNames.length, nextName);
   }
 

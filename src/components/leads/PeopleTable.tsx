@@ -31,20 +31,24 @@ function SkeletonRow({ index }: { index: number }) {
   );
 }
 
-function PersonTableRow({ row }: { row: PersonRow }) {
+function PersonTableRow({ row, onOpen, selected, onToggle }: { row: PersonRow; onOpen: (row: PersonRow) => void; selected: boolean; onToggle: (id: string) => void }) {
   const router = useRouter();
   const { person, company, campaigns, crm } = row;
   const href = crm ? `/crm/records/${crm.recordId}` : null;
-  const name = person.fullName || "Unnamed person";
+  const name = person.fullName || [person.firstName, person.lastName].filter(Boolean).join(" ") || "Unnamed person";
   const companyName = company ? company.name || company.domain : null;
+  const custom = person.custom ?? {};
   return (
     <Table.Row
-      tabIndex={href ? 0 : undefined}
-      aria-label={href ? `Open ${name}` : undefined}
-      onClick={href ? () => router.push(href) : undefined}
-      onKeyDown={href ? (event) => { if (event.target === event.currentTarget && event.key === "Enter") router.push(href); } : undefined}
-      className={cn("outline-none focus-visible:[&>td]:bg-bg-weak-50", href && "cursor-pointer")}
+      tabIndex={0}
+      aria-label={`Open ${name}`}
+      onClick={() => onOpen(row)}
+      onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === "Enter") onOpen(row); }}
+      className="cursor-pointer outline-none focus-visible:[&>td]:bg-bg-weak-50"
     >
+      <Table.Cell className={cn(rowCell, "w-10")} onClick={stop} onKeyDown={stop}>
+        <input type="checkbox" aria-label={`Select ${name}`} checked={selected} onChange={() => onToggle(person.id)} />
+      </Table.Cell>
       <Table.Cell className={rowCell}>
         <div className="flex min-w-0 items-center gap-3">
           <ContactAvatar src={person.profilePictureUrl} fallback={initials(person.fullName)} className="size-8 bg-bg-weak-50 text-label-xs text-text-sub-600 ring-1 ring-inset ring-stroke-soft-200" />
@@ -63,6 +67,9 @@ function PersonTableRow({ row }: { row: PersonRow }) {
           </div>
         ) : <Empty label="No company" />}
       </Table.Cell>
+      <Table.Cell className={rowCell}><span className="text-paragraph-sm text-text-sub-600">{String(custom.x_email_status ?? "—")}{row.suppressionReason ? " · suppressed" : ""}</span></Table.Cell>
+      <Table.Cell className={rowCell}><span className="text-paragraph-sm text-text-sub-600">{[custom.x_city, custom.x_country].filter(Boolean).join(", ") || "—"}</span></Table.Cell>
+      <Table.Cell className={rowCell}><span className="text-paragraph-sm text-text-sub-600">{row.doNotContact ? "Do not contact" : "—"}</span></Table.Cell>
       <Table.Cell className={rowCell}><ReachIcons person={person} /></Table.Cell>
       <Table.Cell className={rowCell}><CampaignSummary campaigns={campaigns} /></Table.Cell>
       <Table.Cell className={rowCell}><CrmSummary crm={crm} /></Table.Cell>
@@ -73,6 +80,7 @@ function PersonTableRow({ row }: { row: PersonRow }) {
               <Button.Root variant="neutral" mode="ghost" size="xsmall" aria-label={`More actions for ${name}`}><Button.Icon as={RiMore2Line} /></Button.Root>
             </Dropdown.Trigger>
             <Dropdown.Content>
+              <Dropdown.Item onSelect={() => onOpen(row)}><Dropdown.ItemIcon as={RiUserSearchLine} />Open profile</Dropdown.Item>
               {href && <Dropdown.Item onSelect={() => router.push(href)}><Dropdown.ItemIcon as={RiUserSearchLine} />Open CRM record</Dropdown.Item>}
               {person.linkedinUrl && <Dropdown.Item onSelect={() => window.open(linkedInPersonHref(person.linkedinUrl as string), "_blank", "noopener,noreferrer")}><Dropdown.ItemIcon as={RiExternalLinkLine} />Open LinkedIn profile</Dropdown.Item>}
               {person.email && <Dropdown.Item onSelect={() => void navigator.clipboard?.writeText(person.email as string)}><Dropdown.ItemIcon as={RiFileCopyLine} />Copy email</Dropdown.Item>}
@@ -86,12 +94,15 @@ function PersonTableRow({ row }: { row: PersonRow }) {
   );
 }
 
-export function PeopleTable({ rows, sort, direction, onSort, loading }: {
+export function PeopleTable({ rows, sort, direction, onSort, loading, onOpen, selected, onSelected }: {
   rows: PersonRow[] | null;
   sort: string;
   direction: Direction;
   onSort: (key: string) => void;
   loading: boolean;
+  onOpen: (row: PersonRow) => void;
+  selected: string[];
+  onSelected: (ids: string[]) => void;
 }) {
   const head = { activeSort: sort, direction, onSort };
   return (
@@ -99,8 +110,12 @@ export function PeopleTable({ rows, sort, direction, onSort, loading }: {
       <Table.Root style={fixedTableStyle}>
         <Table.Header>
           <tr>
+            <SortableHead label={<span className="sr-only">Select</span>} className="w-10" />
             <SortableHead label="Name" sortKey="name" className="w-[21%]" {...head} />
             <SortableHead label="Company" sortKey="company" className="w-[18%]" {...head} />
+            <SortableHead label="Email status" sortKey="x_email_status" className="w-36" {...head} />
+            <SortableHead label="City" sortKey="x_city" className="w-32" {...head} />
+            <SortableHead label="DNC" className="w-28" />
             <SortableHead label="Reach" className="w-28" />
             <SortableHead label="Outreach" className="w-[18%]" />
             <SortableHead label="CRM" />
@@ -108,7 +123,15 @@ export function PeopleTable({ rows, sort, direction, onSort, loading }: {
           </tr>
         </Table.Header>
         <Table.Body spacing={4} className={cn("transition-opacity", loading && rows && "opacity-60")} aria-busy={loading}>
-          {rows === null ? Array.from({ length: 10 }, (_, index) => <SkeletonRow key={index} index={index} />) : rows.map((row) => <PersonTableRow key={row.person.id} row={row} />)}
+          {rows === null ? Array.from({ length: 10 }, (_, index) => <SkeletonRow key={index} index={index} />) : rows.map((row) => (
+            <PersonTableRow
+              key={row.person.id}
+              row={row}
+              onOpen={onOpen}
+              selected={selected.includes(row.person.id)}
+              onToggle={(id) => onSelected(selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id])}
+            />
+          ))}
         </Table.Body>
       </Table.Root>
     </Tooltip.Provider>

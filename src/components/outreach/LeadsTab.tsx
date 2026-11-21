@@ -20,6 +20,7 @@ import type { LeadPage } from "@/lib/outreach/campaigns";
 
 const STATUS_COLOR: Record<OutreachLeadStatus, React.ComponentProps<typeof Badge.Root>["color"]> = {
   pending: "gray",
+  held: "yellow",
   initial_sent: "blue",
   in_follow_up: "blue",
   reply_processing: "yellow",
@@ -30,6 +31,7 @@ const STATUS_COLOR: Record<OutreachLeadStatus, React.ComponentProps<typeof Badge
 };
 const STATUS_LABEL: Record<OutreachLeadStatus, string> = {
   pending: "Pending",
+  held: "Held draft",
   initial_sent: "In sequence",
   in_follow_up: "In sequence",
   reply_processing: "Processing reply",
@@ -42,6 +44,7 @@ const STATUS_LABEL: Record<OutreachLeadStatus, string> = {
 const FILTERS: { id: string; label: string }[] = [
   { id: "all", label: "All" },
   { id: "pending", label: "Pending" },
+  { id: "held", label: "Held drafts" },
   { id: "in_sequence", label: "In sequence" },
   { id: "replied", label: "Replied" },
   { id: "completed", label: "Completed" },
@@ -94,6 +97,7 @@ export default function LeadsTab({
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [approveNote, setApproveNote] = useState("");
   const [showPeople, setShowPeople] = useState(false);
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
 
@@ -203,6 +207,15 @@ export default function LeadsTab({
                 <Button.Icon as={RiAddLine} />
                 Add from People
               </Button.Root>
+              <Button.Root variant="neutral" mode="stroke" size="xsmall" onClick={() => {
+                void fetch(`/api/outreach/campaigns/${campaignId}/held`, { method: "POST" }).then(async (response) => {
+                  const body = await response.json();
+                  setApproveNote(response.ok ? `Approved ${body.approved} held drafts. The campaign stays as it is, and nothing was sent.` : body.error ?? "Could not approve");
+                  if (response.ok) void load();
+                });
+              }}>
+                Approve held drafts
+              </Button.Root>
               <Button.Root variant="primary" mode="filled" size="xsmall" onClick={() => setShowImport(true)}>
                 <Button.Icon as={RiUploadCloud2Line} />
                 Upload CSV
@@ -210,6 +223,7 @@ export default function LeadsTab({
             </>
           }
         />
+        {approveNote && <p className="px-4 pt-2 text-paragraph-sm text-text-sub-600">{approveNote}</p>}
         <FramePanel className="p-2 sm:p-3">
           <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-3">
             <div className="max-w-full overflow-x-auto">
