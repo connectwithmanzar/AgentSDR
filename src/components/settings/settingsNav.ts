@@ -43,7 +43,6 @@ export const SETTINGS_NAV: { label: string; items: SettingsNavItem[] }[] = [
       { href: "/settings/members", label: "Members", icon: RiGroupLine },
       { href: "/settings/teams", label: "Teams", icon: RiTeamLine },
       { href: "/settings/api-keys", label: "API keys", icon: RiKey2Line },
-      { href: "/settings/desk", label: "Candidate database", icon: RiBookOpenLine },
       { href: "/settings/ai-assistants", label: "AI assistants", icon: RiRobot2Line },
     ],
   },
